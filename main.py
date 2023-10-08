@@ -2,46 +2,86 @@ import wx
 import wx.adv
 import pandas as pd
 import matplotlib.pyplot as plt
-from io import BytesIO
 import numpy as np
+
 
 class TableData:
     def __init__(self, fileName):
+        # reads the chosen file into a dataframe
         self.data = pd.read_csv(fileName)
 
     def getData(self):
+        # returns dataframe when called
         return self.data
 
     def getSelectedDateData(self, startDate, endDate):
-        searchStart = pd.to_datetime(startDate, format='%d/%m/%Y')
+        # --- for a user selected period, display the information of all accidents that happened in the period ---
+
+        # define the date range
+        searchStart = pd.to_datetime(startDate, format='%d/%m/%Y')  # format the data into d/m/y because americans
         searchEnd = pd.to_datetime(endDate, format='%d/%m/%Y')
+
+        # convert to timestamp format
         self.data['ACCIDENT_DATE'] = pd.to_datetime(self.data['ACCIDENT_DATE'], format='%d/%m/%Y')
-        selectedData = self.data[(self.data['ACCIDENT_DATE'] >= searchStart) & (self.data['ACCIDENT_DATE'] <= searchEnd)]
+
+        # selected data is between start and end data
+        selectedData = self.data[
+            (self.data['ACCIDENT_DATE'] >= searchStart) & (self.data['ACCIDENT_DATE'] <= searchEnd)]
+
         return selectedData
 
-    def getAccidentPerHour(self, startDate, endDate):
-        self.data = self.getSelectedDateData(startDate, endDate)
-        hourCount = {}
+    def getAccidentPerHour(self, accidentType):
+        # --- For a user selected period, produce a chart to show the number of accidents in each hour of the day ---
+
+        self.data = self.getSelectedDateData(startDate, endDate)  # dataframe is the filtered time period
+
+        self.data = self.getSelectedType(accidentType)
+
+        hourCount = {}  # create a dictionary for the counted accidents
+
+        # print(hourCount)
+
         for accidentTime in self.data['ACCIDENT_TIME']:
-            hour = accidentTime.split('.')[0]
+            hour = accidentTime.split('.')[0]  # data formatted as HH.MM.SS so split at '.'
+
             if hour in hourCount:
-                hourCount[hour] += 1
+                hourCount[hour] += 1  # if the current hour is in the dictionary, add 1 to it
             else:
-                hourCount[hour] = 1
-        return hourCount
+                hourCount[hour] = 1  # otherwise give it a value of 1
+
+        # print(hourCount)
+        sortedHourCount = dict(sorted(hourCount.items()))
+
+        # print(sortedHourCount)
+
+        return sortedHourCount
 
     def getSelectedType(self, accidentType):
+        # --- for a user selected period, retrieve all accidents caused by a type containing a keyword ---
+
+        # make the searched data the filtered time dataframe
         self.data = self.getSelectedDateData(startDate, endDate)
-        searchType = self.data[self.data['ACCIDENT_TYPE'].str.lower().str.contains(accidentType.lower())]
+
+        if accidentType == "All":
+            return self.data
+
+        # selected data looks for 'Yes' or 'No' in any casings
+        searchType = self.data[self.data['ACCIDENT_TYPE'].str.lower() == accidentType.lower()]
+
+        # print(searchType)
+
         return searchType
 
-    def getAlcoholInvolved(self, hasAlcohol):
+    def getAlcoholInvolved(self, hasAlcohol):  # get data where alcohol was involved in the accident
         searchAlcohol = self.data[self.data['ALCOHOLTIME'].str.lower().str.contains(hasAlcohol.lower())]
+
         return searchAlcohol
+
 
 class NewWindow(wx.Frame):
     def __init__(self, parent, title):
         super(NewWindow, self).__init__(parent, title=title, size=(1000, 750))
+
 
 class NewProjectWindow(wx.Frame):
     def __init__(self, parent, title):
@@ -61,7 +101,8 @@ class NewProjectWindow(wx.Frame):
                                                         "No Collision and no object struck", "Struck Animals",
                                                         "Vehicle overturned(No Collision)",
                                                         "Collision with some other object",
-                                                        "Fall from or in moving vehicle", "Other Accident"])
+                                                        "Fall from or in moving vehicle", "Other Accident",
+                                                        "All"])
         self.create_empty_cell(grid_sizer)
         self.create_label(grid_sizer, "Has Alcohol:")
         self.choice_2 = self.create_choice(grid_sizer, ["Yes", "No"])
@@ -113,8 +154,10 @@ class NewProjectWindow(wx.Frame):
     def on_button_click(self, event):
         Data_frame = NewWindow(self, title="Data Frame")
         startDateUNFORM = self.datepicker_ctrl_1.GetValue()
+        global startDate
         startDate = startDateUNFORM.GetDateOnly().Format("%d/%m/%Y")
         endDateUNFORM = self.datepicker_ctrl_2.GetValue()
+        global endDate
         endDate = endDateUNFORM.GetDateOnly().Format("%d/%m/%Y")
         select_index1 = self.choice_1.GetSelection()
         if select_index1 != wx.NOT_FOUND:
@@ -122,11 +165,18 @@ class NewProjectWindow(wx.Frame):
         select_index2 = self.choice_2.GetSelection()
         if select_index2 != wx.NOT_FOUND:
             hasAlcohol = self.choice_2.GetString(select_index2)
+
         table = TableData('Stats.csv')
+        print(table.data)
         table.getSelectedDateData(startDate, endDate)
-        export = table.getData()
-        export.to_csv('output.csv', index=False)
-        hour_count = table.getAccidentPerHour(startDate, endDate)
+        print(table.data)
+        # print(table.data)
+        # print(accidentType)
+        table.getSelectedType(accidentType)
+        print(table.data)
+        hour_count = table.getAccidentPerHour(accidentType)
+        print(table.data)
+        # print(hour_count)
         plt.figure(figsize=(10, 6))
         hours = list(hour_count.keys())
         counts = list(hour_count.values())
@@ -137,6 +187,7 @@ class NewProjectWindow(wx.Frame):
         plt.xticks(np.arange(0, 24, step=1))
         plt.grid(axis='y', linestyle='--', alpha=0.7)
         plt.savefig("data1.png")
+
         Data1 = NewWindow(self, 'DataImages-AccidentsPerHour')
         image = wx.Image("data1.png")
         bitmap = wx.Bitmap(image)
@@ -155,12 +206,14 @@ class NewProjectWindow(wx.Frame):
             plt.xticks(np.arange(0, 24, step=1))
             plt.grid(axis='y', linestyle='--', alpha=0.7)
             plt.savefig("data2.png")
+
             Data2 = NewWindow(self, 'DataImages-Alcohol')
             image = wx.Image("data2.png")
             bitmap = wx.Bitmap(image)
             wx.StaticBitmap(Data2, -1, bitmap, (10, 10))
             Data2.SetTitle("Alcohol-Related Accidents")
             Data2.Show()
+
 
 class HelpWindow(wx.Frame):
     def __init__(self, parent, title):
@@ -177,6 +230,7 @@ class HelpWindow(wx.Frame):
 
     def on_back_button_click(self, event):
         self.Close()
+
 
 class MainFrame(wx.Frame):
     def __init__(self, *args, **kwds):
@@ -216,12 +270,14 @@ class MainFrame(wx.Frame):
         new_window = NewWindow(self, "Data")
         new_window.Show()
 
+
 class MyApp(wx.App):
     def OnInit(self):
         self.frame = MainFrame(None, wx.ID_ANY, "")
         self.SetTopWindow(self.frame)
         self.frame.Show()
         return True
+
 
 if __name__ == "__main__":
     app = MyApp()
